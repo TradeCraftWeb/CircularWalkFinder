@@ -441,8 +441,11 @@ function validateInputs() {
   let valid = true;
 
   const postcode = $('postcode').value.trim();
-  const ukPostcodeRe = /^[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}$/i;
-  if (!ukPostcodeRe.test(postcode)) {
+  // Validate by stripping the optional internal space and checking compact form.
+  // postcodes.io will reject truly invalid postcodes with a friendly error.
+  const compact = postcode.replace(/\s/g, '');
+  const ukPostcodeRe = /^[A-Z]{1,2}\d[A-Z\d]?\d[A-Z]{2}$/i;
+  if (compact.length < 5 || !ukPostcodeRe.test(compact)) {
     showFieldError('postcode', 'Please enter a valid UK postcode (e.g. SW1A 1AA)');
     valid = false;
   } else {
@@ -479,6 +482,12 @@ function validateInputs() {
     valid = false;
   } else {
     clearFieldError('apiKey');
+  }
+
+  // Scroll the first errored field into view so users notice the inline error messages
+  if (!valid) {
+    const firstErr = document.querySelector('.field-error.visible');
+    if (firstErr) firstErr.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   return valid;
@@ -841,8 +850,11 @@ function initFormShortcuts() {
 function initPostcodeInput() {
   const inp = $('postcode');
   inp.addEventListener('input', () => {
+    // Strip everything except letters, digits, spaces; uppercase
     let val = inp.value.toUpperCase().replace(/[^A-Z0-9 ]/g, '');
-    // Auto-insert space before last 3 chars if missing
+    // Collapse multiple spaces to one, trim
+    val = val.replace(/\s+/g, ' ').trim();
+    // Auto-insert space before last 3 chars if no space present and length > 3
     if (val.length > 3 && !val.includes(' ')) {
       const idx = val.length - 3;
       val = val.slice(0, idx) + ' ' + val.slice(idx);
