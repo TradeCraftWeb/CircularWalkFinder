@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Circular Walk Finder · UK Walking Routes</title>
+  <meta name="description" content="Generate circular walking routes in the UK. Enter a postcode, set your desired distance, and discover footpath-rich loops starting from your location." />
+  <meta name="theme-color" content="#22c55e" />
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Circular Walk Finder · UK Walking Routes" />
+  <meta property="og:description" content="Discover circular walking routes near any UK postcode. Powered by OpenStreetMap and OpenRouteService." />
+  <meta property="og:type" content="website" />
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+
+  <!-- App styles -->
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════
+     HEADER
+══════════════════════════════════════════════════════════ -->
+<header class="site-header" role="banner">
+  <a href="/" class="site-header__logo" aria-label="Circular Walk Finder home">
+    <div class="logo-icon" aria-hidden="true">🥾</div>
+    <span>Circular Walk Finder</span>
+  </a>
+
+  <div class="site-header__actions">
+    <a href="#about" class="btn btn-secondary"
+       style="min-height:34px;padding:0.3rem 0.85rem;font-size:0.8rem;border-radius:var(--radius-sm);">
+      About
+    </a>
+    <button id="themeToggle" class="theme-toggle" aria-label="Toggle dark / light mode"
+            title="Toggle dark / light mode">🌙</button>
+  </div>
+</header>
+
+<!-- ══════════════════════════════════════════════════════════
+     MAIN APP LAYOUT
+══════════════════════════════════════════════════════════ -->
+<div class="app-layout">
+
+  <!-- ── SIDEBAR ──────────────────────────────────────────── -->
+  <aside class="sidebar" aria-label="Route configuration and results">
+
+    <!-- API Key Section -->
+    <section class="panel" aria-labelledby="apiKeyTitle">
+      <p class="panel-title" id="apiKeyTitle">🔑 OpenRouteService API Key</p>
+      <div class="form-group">
+        <label for="apiKey">
+          API Key
+          <a href="https://openrouteservice.org/dev/#/signup" target="_blank" rel="noopener"
+             style="font-size:0.7rem;margin-left:0.4rem;color:var(--accent);">
+            Get free key ↗
+          </a>
+        </label>
+        <div class="api-key-row">
+          <input type="password" id="apiKey" name="apiKey" autocomplete="off"
+                 placeholder="ors_…your_key_here…"
+                 aria-describedby="apiKeyError apiKeyHint" />
+          <button type="button" id="toggleApiKey" class="btn-icon"
+                  aria-label="Show or hide API key" title="Show/hide key">👁️</button>
+          <button type="button" id="saveApiKey" class="btn-icon"
+                  aria-label="Save API key to browser storage" title="Save key">💾</button>
+        </div>
+        <p class="hint" id="apiKeyHint">
+          Stored locally in your browser. Free tier: 2,000 req/day, ~40 req/min.
+        </p>
+        <p class="field-error" id="apiKeyError" role="alert"></p>
+      </div>
+    </section>
+
+    <!-- Route Parameters -->
+    <section class="panel" aria-labelledby="paramsTitle">
+      <p class="panel-title" id="paramsTitle">📍 Route Parameters</p>
+
+      <div class="form-group">
+        <label for="postcode">UK Postcode</label>
+        <input type="text" id="postcode" name="postcode"
+               placeholder="e.g. SW1A 1AA"
+               autocomplete="postal-code"
+               maxlength="8"
+               aria-describedby="postcodeError"
+               required />
+        <p class="field-error" id="postcodeError" role="alert"></p>
+      </div>
+
+      <div class="input-row">
+        <div class="form-group">
+          <label for="minDist">Min distance (km)</label>
+          <input type="number" id="minDist" name="minDist"
+                 value="4" min="1" max="100" step="0.5"
+                 aria-describedby="minDistError" />
+          <p class="field-error" id="minDistError" role="alert"></p>
+        </div>
+        <div class="form-group">
+          <label for="maxDist">Max distance (km)</label>
+          <input type="number" id="maxDist" name="maxDist"
+                 value="10" min="1" max="100" step="0.5"
+                 aria-describedby="maxDistError" />
+          <p class="field-error" id="maxDistError" role="alert"></p>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="maxRadius">
+          Max stray from start (km)
+          <span style="font-size:0.68rem;color:var(--text-muted);margin-left:0.3rem;">
+            — search radius
+          </span>
+        </label>
+        <input type="number" id="maxRadius" name="maxRadius"
+               value="8" min="0.5" max="200" step="0.5"
+               aria-describedby="maxRadiusError maxRadiusHint" />
+        <p class="hint" id="maxRadiusHint">
+          The furthest the route should stray from your start point in any direction.
+        </p>
+        <p class="field-error" id="maxRadiusError" role="alert"></p>
+      </div>
+
+      <div class="form-group">
+        <label for="routeCount">Number of routes to generate</label>
+        <select id="routeCount" name="routeCount" aria-label="Number of routes">
+          <option value="5">5 routes</option>
+          <option value="6">6 routes</option>
+          <option value="8" selected>8 routes (recommended)</option>
+          <option value="10">10 routes</option>
+          <option value="12">12 routes (slow)</option>
+        </select>
+      </div>
+
+      <!-- Status / progress -->
+      <div id="statusBar" class="status-bar" style="display:none;" role="status" aria-live="polite">
+        <span></span>
+      </div>
+      <div id="progressTrack" class="progress-track" style="display:none;" aria-hidden="true">
+        <div id="progressFill" class="progress-fill"></div>
+      </div>
+
+      <button id="generateBtn" class="btn btn-primary" type="button">
+        🗺️ Generate Routes
+      </button>
+    </section>
+
+    <!-- Results / Sort -->
+    <section class="panel" aria-labelledby="resultsTitle">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;">
+        <p class="panel-title" style="margin:0" id="resultsTitle">📋 Routes</p>
+        <div class="sort-bar" style="margin-bottom:0;" aria-label="Sort routes">
+          <label for="sortSelect" class="visually-hidden">Sort by</label>
+          <select id="sortSelect" name="sortSelect" aria-label="Sort routes by">
+            <option value="default">Sort: Default</option>
+            <option value="distance">Sort: Distance ↑</option>
+            <option value="footpath">Sort: Footpaths ↓</option>
+            <option value="repetition">Sort: Least repetition</option>
+            <option value="duration">Sort: Duration ↑</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Route cards inserted here by JS -->
+      <div id="routesList" role="list" aria-label="Generated walking routes">
+        <div class="empty-state">
+          <span class="icon">🗺️</span>
+          <h3>No routes yet</h3>
+          <p>Enter a UK postcode and click <strong>Generate Routes</strong> to find circular walks near you.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- About / Attribution -->
+    <section id="about" class="about-section" aria-labelledby="aboutTitle">
+      <p id="aboutTitle" style="font-weight:600;color:var(--text-secondary);margin-bottom:0.4rem;">
+        ℹ️ How it works
+      </p>
+      <p>
+        Routes are generated from <strong>OpenStreetMap</strong> data via the
+        <strong>OpenRouteService</strong> round-trip directions API.
+        Footpath percentages and repetition scores are estimates based on
+        OSM waytype data — always verify rights of way and conditions on the ground.
+      </p>
+      <p style="margin-top:0.4rem;">
+        <strong>⚠️ Verify on the ground.</strong> Rights of way, path conditions, and access
+        may differ from what OSM data indicates.
+      </p>
+      <div class="attribution">
+        <span>© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors (ODbL)</span>
+        <span>· Routing: <a href="https://openrouteservice.org" target="_blank" rel="noopener">OpenRouteService / HeiGIT</a> (CC-BY 4.0)</span>
+        <span>· Geocoding: <a href="https://postcodes.io" target="_blank" rel="noopener">postcodes.io</a> (MIT)</span>
+      </div>
+    </section>
+
+  </aside>
+
+  <!-- ── MAP + INFO BAR ────────────────────────────────────── -->
+  <main class="main-content" aria-label="Interactive map">
+    <!-- Leaflet map -->
+    <div id="map" role="application" aria-label="Walking route map">
+
+      <!-- Map legend overlay -->
+      <div id="mapLegend" class="map-legend" aria-hidden="true"></div>
+
+    </div>
+
+    <!-- Route info bar -->
+    <div id="infoBar" class="route-info-bar" role="status" aria-live="polite">
+      <span style="color:var(--text-muted)">Select a route to see details</span>
+    </div>
+  </main>
+
+</div><!-- /.app-layout -->
+
+<!-- ══════════════════════════════════════════════════════════
+     SCRIPTS
+══════════════════════════════════════════════════════════ -->
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV/XN2GqiE=" crossorigin=""></script>
+
+<!-- App logic -->
+<script src="app.js"></script>
+
+</body>
+</html>
